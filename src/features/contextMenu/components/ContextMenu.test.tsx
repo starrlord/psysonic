@@ -75,7 +75,7 @@ function setUpActiveServer(): ServerProfile {
 }
 
 function openMenuFor(
-  type: 'song' | 'album' | 'artist' | 'queue-item' | 'album-song',
+  type: 'song' | 'album' | 'artist' | 'queue-item' | 'album-song' | 'playlist',
   item: unknown,
   queueIndex?: number,
   timelineFromHereRefs?: { serverId: string; trackId: string }[],
@@ -311,6 +311,14 @@ describe('ContextMenu — Escape closes', () => {
 
 
 describe('ContextMenu — "Add to CD" gating', () => {
+  /** A minimal album, shaped the way `openContextMenu` receives one. */
+  function burnableAlbum(): unknown {
+    return {
+      id: 'al-burn', name: 'Album', artist: 'Artist', artistId: 'ar-1',
+      songCount: 3, duration: 540, year: 2024, serverId: 'srv-1',
+    };
+  }
+
   /** Turn the burner nav entry on; it ships hidden. */
   function showBurnerInSidebar(): void {
     const store = useSidebarStore.getState();
@@ -367,5 +375,54 @@ describe('ContextMenu — "Add to CD" gating', () => {
     await waitFor(() => expect(useBurnSupportStore.getState().supported).toBe('yes'));
 
     expect(queryByText('Add to CD')).toBeNull();
+  });
+
+  it('appears in the album menu once the backend answers and the nav entry is on', async () => {
+    onInvoke('burn_is_supported', () => true);
+    showBurnerInSidebar();
+    openMenuFor('album', burnableAlbum());
+
+    const { findByText } = renderWithProviders(<ContextMenu />);
+
+    expect(await findByText('Add to CD')).toBeInTheDocument();
+  });
+
+  it('stays hidden in the album menu on a build with no burn backend', async () => {
+    onInvoke('burn_is_supported', () => false);
+    showBurnerInSidebar();
+    openMenuFor('album', burnableAlbum());
+
+    const { queryByText } = renderWithProviders(<ContextMenu />);
+    await waitFor(() => expect(useBurnSupportStore.getState().supported).toBe('no'));
+
+    expect(queryByText('Add to CD')).toBeNull();
+  });
+
+  it('sits directly above "Copy share link" in the album menu', async () => {
+    onInvoke('burn_is_supported', () => true);
+    showBurnerInSidebar();
+    openMenuFor('album', burnableAlbum());
+
+    const { container, findByText } = renderWithProviders(<ContextMenu />);
+    await findByText('Add to CD');
+
+    // The placement the feature was asked for: first entry of the final group,
+    // ahead of the share/download/playlist block.
+    const labels = [...container.querySelectorAll('.context-menu-item')]
+      .map(item => item.textContent?.trim());
+    expect(labels).toContain('Add to CD');
+    expect(labels.indexOf('Add to CD')).toBe(labels.indexOf('Copy share link') - 1);
+  });
+
+  it('appears in the playlist menu once the backend answers and the nav entry is on', async () => {
+    onInvoke('burn_is_supported', () => true);
+    showBurnerInSidebar();
+    openMenuFor('playlist', {
+      id: 'pl-1', name: 'Playlist', songCount: 3, duration: 540, serverId: 'srv-1',
+    });
+
+    const { findByText } = renderWithProviders(<ContextMenu />);
+
+    expect(await findByText('Add to CD')).toBeInTheDocument();
   });
 });
